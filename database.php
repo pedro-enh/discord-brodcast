@@ -14,6 +14,10 @@ class Database {
         $this->createTables();
     }
     
+    public function getPdo() {
+        return $this->pdo;
+    }
+    
     private function connect() {
         try {
             $this->pdo = new PDO("sqlite:" . $this->dbPath);

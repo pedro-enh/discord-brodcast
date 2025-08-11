@@ -2,10 +2,11 @@
 require_once 'database.php';
 
 class BroadcastQueue {
-    private $db;
+    private $pdo;
     
     public function __construct() {
-        $this->db = new Database();
+        $db = new Database();
+        $this->pdo = $db->getPdo();
         $this->createQueueTable();
     }
     
@@ -31,7 +32,7 @@ class BroadcastQueue {
             completed_at DATETIME
         )";
         
-        $this->db->query($sql);
+        $this->pdo->exec($sql);
     }
     
     public function addBroadcast($user_id, $discord_user_id, $guild_id, $message, $target_type, $delay, $enable_mentions, $bot_token) {
@@ -39,44 +40,44 @@ class BroadcastQueue {
                 (user_id, discord_user_id, guild_id, message, target_type, delay_seconds, enable_mentions, bot_token) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         
-        $params = [$user_id, $discord_user_id, $guild_id, $message, $target_type, $delay, $enable_mentions, $bot_token];
-        
-        return $this->db->query($sql, $params);
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$user_id, $discord_user_id, $guild_id, $message, $target_type, $delay, $enable_mentions, $bot_token]);
     }
     
     public function getNextPendingBroadcast() {
         $sql = "SELECT * FROM broadcast_queue WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1";
-        $result = $this->db->query($sql);
-        return $result ? $result[0] : null;
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetch();
     }
     
     public function updateBroadcastStatus($id, $status, $data = []) {
         $updates = ['status = ?'];
-        $params = [$status, $id];
+        $params = [$status];
         
         if (isset($data['progress'])) {
             $updates[] = 'progress = ?';
-            array_unshift($params, $data['progress']);
+            $params[] = $data['progress'];
         }
         
         if (isset($data['total_members'])) {
             $updates[] = 'total_members = ?';
-            array_unshift($params, $data['total_members']);
+            $params[] = $data['total_members'];
         }
         
         if (isset($data['sent_count'])) {
             $updates[] = 'sent_count = ?';
-            array_unshift($params, $data['sent_count']);
+            $params[] = $data['sent_count'];
         }
         
         if (isset($data['failed_count'])) {
             $updates[] = 'failed_count = ?';
-            array_unshift($params, $data['failed_count']);
+            $params[] = $data['failed_count'];
         }
         
         if (isset($data['error_message'])) {
             $updates[] = 'error_message = ?';
-            array_unshift($params, $data['error_message']);
+            $params[] = $data['error_message'];
         }
         
         if ($status === 'processing') {
@@ -85,30 +86,38 @@ class BroadcastQueue {
             $updates[] = 'completed_at = CURRENT_TIMESTAMP';
         }
         
+        $params[] = $id;
         $sql = "UPDATE broadcast_queue SET " . implode(', ', $updates) . " WHERE id = ?";
         
-        return $this->db->query($sql, $params);
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute($params);
     }
     
     public function getBroadcastStatus($id) {
         $sql = "SELECT * FROM broadcast_queue WHERE id = ?";
-        $result = $this->db->query($sql, [$id]);
-        return $result ? $result[0] : null;
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$id]);
+        return $stmt->fetch();
     }
     
     public function getUserBroadcasts($discord_user_id, $limit = 10) {
         $sql = "SELECT * FROM broadcast_queue WHERE discord_user_id = ? ORDER BY created_at DESC LIMIT ?";
-        return $this->db->query($sql, [$discord_user_id, $limit]);
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$discord_user_id, $limit]);
+        return $stmt->fetchAll();
     }
     
     public function getActiveBroadcasts() {
         $sql = "SELECT * FROM broadcast_queue WHERE status IN ('pending', 'processing') ORDER BY created_at ASC";
-        return $this->db->query($sql);
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll();
     }
     
     public function deleteBroadcast($id) {
         $sql = "DELETE FROM broadcast_queue WHERE id = ?";
-        return $this->db->query($sql, [$id]);
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$id]);
     }
 }
 ?>
