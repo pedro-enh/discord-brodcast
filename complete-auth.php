@@ -41,7 +41,7 @@ unset($_SESSION['auth_code']);
         // Discord configuration
         const DISCORD_CLIENT_ID = '1404415002269712394';
         const DISCORD_CLIENT_SECRET = 'xxEFeapSbG0SOhPNxsoQxMFZCCpj2ZgX';
-        const REDIRECT_URI = 'https://brodcast-ds-production.up.railway.app/auth-simple.php';
+        const REDIRECT_URI = 'https://discord-brodcast.up.railway.app/auth-simple.php';
         const AUTH_CODE = '<?php echo htmlspecialchars($auth_code); ?>';
 
         let progress = 0;
@@ -195,3 +195,4 @@ unset($_SESSION['auth_code']);
     </style>
 </body>
 </html>
+
