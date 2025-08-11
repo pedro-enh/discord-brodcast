@@ -1,197 +1,108 @@
 <?php
 session_start();
 
-// Check if we have an auth code
-if (!isset($_SESSION['auth_code'])) {
+// Load configuration
+try {
+    $config = require_once 'config.php';
+    require_once 'database.php';
+} catch (Exception $e) {
+    die('Configuration error: ' . $e->getMessage());
+}
+
+// Check if we have an authorization code from Discord
+$auth_code = $_GET['code'] ?? null;
+
+if (!$auth_code) {
     header('Location: index.php?error=no_auth_code');
     exit;
 }
 
-$auth_code = $_SESSION['auth_code'];
-// Clear the code from session for security
-unset($_SESSION['auth_code']);
+// Discord OAuth configuration
+$client_id = $config['DISCORD_CLIENT_ID'];
+$client_secret = $config['DISCORD_CLIENT_SECRET'];
+$redirect_uri = $config['REDIRECT_URI'];
+
+// Exchange authorization code for access token
+$token_url = 'https://discord.com/api/oauth2/token';
+$token_data = [
+    'client_id' => $client_id,
+    'client_secret' => $client_secret,
+    'grant_type' => 'authorization_code',
+    'code' => $auth_code,
+    'redirect_uri' => $redirect_uri
+];
+
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $token_url);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($token_data));
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Content-Type: application/x-www-form-urlencoded'
+]);
+
+$token_response = curl_exec($ch);
+$token_http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if ($token_http_code !== 200) {
+    header('Location: index.php?error=token_exchange_failed');
+    exit;
+}
+
+$token_data = json_decode($token_response, true);
+
+if (!isset($token_data['access_token'])) {
+    header('Location: index.php?error=no_access_token');
+    exit;
+}
+
+// Get user information from Discord
+$user_url = 'https://discord.com/api/users/@me';
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $user_url);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Authorization: Bearer ' . $token_data['access_token']
+]);
+
+$user_response = curl_exec($ch);
+$user_http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+if ($user_http_code !== 200) {
+    header('Location: index.php?error=user_fetch_failed');
+    exit;
+}
+
+$user_data = json_decode($user_response, true);
+
+// Create avatar URL
+$avatar_url = $user_data['avatar'] 
+    ? "https://cdn.discordapp.com/avatars/{$user_data['id']}/{$user_data['avatar']}.png"
+    : "https://cdn.discordapp.com/embed/avatars/" . (intval($user_data['discriminator']) % 5) . ".png";
+
+// Store user data in session
+$_SESSION['discord_user'] = [
+    'id' => $user_data['id'],
+    'username' => $user_data['username'],
+    'discriminator' => $user_data['discriminator'],
+    'avatar' => $user_data['avatar'],
+    'avatar_url' => $avatar_url,
+    'email' => $user_data['email'] ?? null,
+    'access_token' => $token_data['access_token']
+];
+
+// Create or update user in database
+try {
+    $db = new Database();
+    $db->createOrUpdateUser($user_data);
+} catch (Exception $e) {
+    error_log('Database error: ' . $e->getMessage());
+    // Continue anyway, session is still valid
+}
+
+// Redirect to main page
+header('Location: index.php?login=success');
+exit;
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Completing Login - Discord Broadcaster Pro</title>
-    <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-</head>
-<body>
-    <div class="app-container">
-        <div class="loading-container">
-            <div class="loading-card">
-                <div class="loading-spinner">
-                    <i class="fab fa-discord"></i>
-                </div>
-                <h2>Completing Discord Login...</h2>
-                <p>Please wait while we finish setting up your account.</p>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <div id="statusText">Exchanging authorization code...</div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // Discord configuration
-        const DISCORD_CLIENT_ID = '1404415002269712394';
-        const DISCORD_CLIENT_SECRET = 'xxEFeapSbG0SOhPNxsoQxMFZCCpj2ZgX';
-        const REDIRECT_URI = 'https://brodcast-ds-production.up.railway.app/auth-simple.php';
-        const AUTH_CODE = '<?php echo htmlspecialchars($auth_code); ?>';
-
-        let progress = 0;
-        const progressFill = document.getElementById('progressFill');
-        const statusText = document.getElementById('statusText');
-
-        function updateProgress(percent, text) {
-            progress = percent;
-            progressFill.style.width = percent + '%';
-            statusText.textContent = text;
-        }
-
-        async function completeAuth() {
-            try {
-                updateProgress(25, 'Exchanging authorization code...');
-
-                // Exchange code for access token
-                const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: new URLSearchParams({
-                        client_id: DISCORD_CLIENT_ID,
-                        client_secret: DISCORD_CLIENT_SECRET,
-                        grant_type: 'authorization_code',
-                        code: AUTH_CODE,
-                        redirect_uri: REDIRECT_URI
-                    })
-                });
-
-                if (!tokenResponse.ok) {
-                    throw new Error('Failed to get access token');
-                }
-
-                const tokenData = await tokenResponse.json();
-                updateProgress(50, 'Getting user information...');
-
-                // Get user information
-                const userResponse = await fetch('https://discord.com/api/users/@me', {
-                    headers: {
-                        'Authorization': `Bearer ${tokenData.access_token}`
-                    }
-                });
-
-                if (!userResponse.ok) {
-                    throw new Error('Failed to get user information');
-                }
-
-                const userData = await userResponse.json();
-                updateProgress(75, 'Setting up your session...');
-
-                // Create avatar URL
-                const avatarUrl = userData.avatar 
-                    ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png`
-                    : `https://cdn.discordapp.com/embed/avatars/${parseInt(userData.discriminator) % 5}.png`;
-
-                // Send user data to PHP to store in session
-                const sessionResponse = await fetch('store-session.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        id: userData.id,
-                        username: userData.username,
-                        discriminator: userData.discriminator,
-                        avatar: userData.avatar,
-                        avatar_url: avatarUrl,
-                        access_token: tokenData.access_token
-                    })
-                });
-
-                if (!sessionResponse.ok) {
-                    throw new Error('Failed to store session');
-                }
-
-                updateProgress(100, 'Login successful! Redirecting...');
-
-                // Redirect to main page
-                setTimeout(() => {
-                    window.location.href = 'index.php?login=success';
-                }, 1000);
-
-            } catch (error) {
-                console.error('Auth error:', error);
-                statusText.textContent = 'Login failed: ' + error.message;
-                setTimeout(() => {
-                    window.location.href = 'index.php?error=auth_failed';
-                }, 3000);
-            }
-        }
-
-        // Start the authentication process
-        completeAuth();
-    </script>
-
-    <style>
-        .loading-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .loading-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
-        }
-
-        .loading-spinner {
-            font-size: 3rem;
-            color: #5865f2;
-            margin-bottom: 1rem;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #e0e0e0;
-            border-radius: 4px;
-            margin: 1rem 0;
-            overflow: hidden;
-        }
-
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #5865f2, #7289da);
-            border-radius: 4px;
-            transition: width 0.3s ease;
-            width: 0%;
-        }
-
-        #statusText {
-            color: #666;
-            font-size: 0.9rem;
-            margin-top: 1rem;
-        }
-    </style>
-</body>
-</html>
