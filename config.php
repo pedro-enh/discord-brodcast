@@ -13,11 +13,11 @@ return [
     
     // Your website URL
     // This value is loaded from .env file or Railway environment variables
-    'REDIRECT_URI' => env('REDIRECT_URI', 'https://yourdomain.com/auth.php'),
+    'REDIRECT_URI' => env('DISCORD_REDIRECT_URI', 'https://yourdomain.com/complete-auth.php'),
     
     // Bot Token (required for broadcasting functionality)
     // This value is loaded from .env file or Railway environment variables
-    'BOT_TOKEN' => env('BOT_TOKEN', ''),
+    'BOT_TOKEN' => env('DISCORD_BOT_TOKEN', ''),
     
     // Optional configuration
     'APP_ENV' => env('APP_ENV', 'production'),

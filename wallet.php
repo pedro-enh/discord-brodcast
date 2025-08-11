@@ -69,6 +69,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
             
+        case 'run_probot_monitor':
+            try {
+                require_once 'probot-monitor.php';
+                $monitor = new ProbotMonitor();
+                $monitor->checkForPayments();
+                echo json_encode(['success' => true, 'message' => 'ProBot monitor executed successfully']);
+            } catch (Exception $e) {
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+            
         default:
             echo json_encode(['success' => false, 'error' => 'Invalid action']);
     }
@@ -222,6 +233,20 @@ $broadcasts = $db->getUserBroadcasts($user['id'], 10);
                                 <i class="fas fa-credit-card"></i>
                                 Purchase Now
                             </button>
+                        </div>
+                    </div>
+                    
+                    <div class="payment-tools">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-robot"></i>
+                            <div>
+                                <h4>Payment Detection</h4>
+                                <p>If your payment isn't detected automatically, you can manually check for new ProBot transfers.</p>
+                                <button class="btn btn-info" onclick="runProbotMonitor()">
+                                    <i class="fas fa-sync"></i>
+                                    Check for Payments
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
