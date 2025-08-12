@@ -24,3 +24,4 @@ return [
     'DEBUG' => env('DEBUG', false)
 ];
 ?>
+
